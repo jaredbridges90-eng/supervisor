@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import errno
-from io import IOBase
+from io import BufferedWriter
 import logging
 from pathlib import Path
 import re
@@ -44,6 +44,7 @@ from ..const import (
     ATTR_TIMEOUT,
     ATTR_TYPE,
     ATTR_VERSION,
+    DEFAULT_CHUNK_SIZE,
     REQUEST_FROM,
 )
 from ..coresys import CoreSysAttributes
@@ -211,7 +212,7 @@ class APIBackups(CoreSysAttributes):
         await self.sys_backups.save_data()
 
     @api_process
-    async def reload(self, _):
+    async def reload(self, _: web.Request) -> bool:
         """Reload backup list."""
         await asyncio.shield(self.sys_backups.reload())
         return True
@@ -310,7 +311,7 @@ class APIBackups(CoreSysAttributes):
         if background and not backup_task.done():
             return {ATTR_JOB_ID: job_id}
 
-        backup: Backup = await backup_task
+        backup: Backup | None = await backup_task
         if backup:
             return {ATTR_JOB_ID: job_id, ATTR_SLUG: backup.slug}
         raise APIError(
@@ -346,7 +347,7 @@ class APIBackups(CoreSysAttributes):
         if background and not backup_task.done():
             return {ATTR_JOB_ID: job_id}
 
-        backup: Backup = await backup_task
+        backup: Backup | None = await backup_task
         if backup:
             return {ATTR_JOB_ID: job_id, ATTR_SLUG: backup.slug}
         raise APIError(
@@ -421,7 +422,7 @@ class APIBackups(CoreSysAttributes):
         await self.sys_backups.remove(backup, locations=locations)
 
     @api_process
-    async def download(self, request: web.Request):
+    async def download(self, request: web.Request) -> web.StreamResponse:
         """Download a backup file."""
         backup = self._extract_slug(request)
         # Query will give us '' for /backups, convert value to None
@@ -451,7 +452,7 @@ class APIBackups(CoreSysAttributes):
         return response
 
     @api_process
-    async def upload(self, request: web.Request):
+    async def upload(self, request: web.Request) -> dict[str, str] | bool:
         """Upload a backup file."""
         location: LOCATION_TYPE = None
         locations: list[LOCATION_TYPE] | None = None
@@ -480,14 +481,14 @@ class APIBackups(CoreSysAttributes):
 
         tmp_path = await self.sys_backups.get_upload_path_for_location(location)
         temp_dir: TemporaryDirectory | None = None
-        backup_file_stream: IOBase | None = None
+        backup_file_stream: BufferedWriter | None = None
 
-        def open_backup_file() -> Path:
+        def open_backup_file() -> tuple[Path, BufferedWriter]:
             nonlocal temp_dir, backup_file_stream
             temp_dir = TemporaryDirectory(dir=tmp_path.as_posix())
             tar_file = Path(temp_dir.name, "upload.tar")
             backup_file_stream = tar_file.open("wb")
-            return tar_file
+            return (tar_file, backup_file_stream)
 
         def close_backup_file() -> None:
             if backup_file_stream:
@@ -503,12 +504,10 @@ class APIBackups(CoreSysAttributes):
             if not isinstance(contents, BodyPartReader):
                 raise APIError("Improperly formatted upload, could not read backup")
 
-            tar_file = await self.sys_run_in_executor(open_backup_file)
-            while chunk := await contents.read_chunk(size=2**16):
-                await self.sys_run_in_executor(
-                    cast(IOBase, backup_file_stream).write, chunk
-                )
-            await self.sys_run_in_executor(cast(IOBase, backup_file_stream).close)
+            tar_file, backup_writer = await self.sys_run_in_executor(open_backup_file)
+            while chunk := await contents.read_chunk(size=DEFAULT_CHUNK_SIZE):
+                await self.sys_run_in_executor(backup_writer.write, chunk)
+            await self.sys_run_in_executor(backup_writer.close)
 
             backup = await asyncio.shield(
                 self.sys_backups.import_backup(

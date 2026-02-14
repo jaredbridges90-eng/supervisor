@@ -80,7 +80,7 @@ class APISupervisor(CoreSysAttributes):
     """Handle RESTful API for Supervisor functions."""
 
     @api_process
-    async def ping(self, request):
+    async def ping(self, request: web.Request) -> bool:
         """Return ok for signal that the API is ready."""
         return True
 
@@ -248,6 +248,7 @@ class APISupervisor(CoreSysAttributes):
         return asyncio.shield(self.sys_supervisor.restart())
 
     @api_process_raw(CONTENT_TYPE_TEXT, error_type=CONTENT_TYPE_TEXT)
-    def logs(self, request: web.Request) -> Awaitable[bytes]:
+    async def logs(self, request: web.Request) -> bytes:
         """Return supervisor Docker logs."""
-        return self.sys_supervisor.logs()
+        logs = await self.sys_supervisor.logs()
+        return "\n".join(logs).encode(errors="replace")

@@ -13,7 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from awesomeversion import AwesomeVersion, AwesomeVersionException
-from securetar import AddFileError, atomic_contents_add, secure_path
+from securetar import AddFileError, SecureTarFile, atomic_contents_add, secure_path
 import voluptuous as vol
 from voluptuous.humanize import humanize_error
 
@@ -23,6 +23,7 @@ from ..const import (
     ATTR_AUDIO_OUTPUT,
     ATTR_BACKUPS_EXCLUDE_DATABASE,
     ATTR_BOOT,
+    ATTR_DUPLICATE_LOG_FILE,
     ATTR_IMAGE,
     ATTR_MESSAGE,
     ATTR_PORT,
@@ -74,6 +75,7 @@ HOMEASSISTANT_BACKUP_EXCLUDE = [
     "backups/*.tar",
     "tmp_backups/*.tar",
     "tts/*",
+    ".cache/*",
 ]
 HOMEASSISTANT_BACKUP_EXCLUDE_DATABASE = [
     "home-assistant_v?.db",
@@ -299,6 +301,16 @@ class HomeAssistant(FileConfiguration, CoreSysAttributes):
         """Set whether backups should exclude database by default."""
         self._data[ATTR_BACKUPS_EXCLUDE_DATABASE] = value
 
+    @property
+    def duplicate_log_file(self) -> bool:
+        """Return True if Home Assistant should duplicate logs to file."""
+        return self._data[ATTR_DUPLICATE_LOG_FILE]
+
+    @duplicate_log_file.setter
+    def duplicate_log_file(self, value: bool) -> None:
+        """Set whether Home Assistant should duplicate logs to file."""
+        self._data[ATTR_DUPLICATE_LOG_FILE] = value
+
     async def load(self) -> None:
         """Prepare Home Assistant object."""
         await asyncio.wait(
@@ -348,15 +360,23 @@ class HomeAssistant(FileConfiguration, CoreSysAttributes):
         ):
             return
 
-        configuration: (
-            dict[str, Any] | None
-        ) = await self.sys_homeassistant.websocket.async_send_command(
-            {ATTR_TYPE: "get_config"}
-        )
+        try:
+            configuration: (
+                dict[str, Any] | None
+            ) = await self.sys_homeassistant.websocket.async_send_command(
+                {ATTR_TYPE: "get_config"}
+            )
+        except HomeAssistantWSError as err:
+            _LOGGER.warning(
+                "Can't get Home Assistant Core configuration: %s. Not sending hardware events to Home Assistant Core.",
+                err,
+            )
+            return
+
         if not configuration or "usb" not in configuration.get("components", []):
             return
 
-        self.sys_homeassistant.websocket.send_message({ATTR_TYPE: "usb/scan"})
+        self.sys_homeassistant.websocket.send_command({ATTR_TYPE: "usb/scan"})
 
     @Job(name="home_assistant_module_begin_backup")
     async def begin_backup(self) -> None:
@@ -398,7 +418,7 @@ class HomeAssistant(FileConfiguration, CoreSysAttributes):
 
     @Job(name="home_assistant_module_backup")
     async def backup(
-        self, tar_file: tarfile.TarFile, exclude_database: bool = False
+        self, tar_file: SecureTarFile, exclude_database: bool = False
     ) -> None:
         """Backup Home Assistant Core config/directory."""
         excludes = HOMEASSISTANT_BACKUP_EXCLUDE.copy()
@@ -458,7 +478,7 @@ class HomeAssistant(FileConfiguration, CoreSysAttributes):
 
     @Job(name="home_assistant_module_restore")
     async def restore(
-        self, tar_file: tarfile.TarFile, exclude_database: bool = False
+        self, tar_file: SecureTarFile, exclude_database: bool | None = False
     ) -> None:
         """Restore Home Assistant Core config/ directory."""
 
@@ -490,14 +510,14 @@ class HomeAssistant(FileConfiguration, CoreSysAttributes):
                     temp_data = temp_path
 
                 _LOGGER.info("Restore Home Assistant Core config folder")
-                if exclude_database:
+                if exclude_database is True:
                     remove_folder_with_excludes(
                         self.sys_config.path_homeassistant,
                         excludes=HOMEASSISTANT_BACKUP_EXCLUDE_DATABASE,
                         tmp_dir=self.sys_config.path_tmp,
                     )
                 else:
-                    remove_folder(self.sys_config.path_homeassistant)
+                    remove_folder(self.sys_config.path_homeassistant, content_only=True)
 
                 try:
                     shutil.copytree(

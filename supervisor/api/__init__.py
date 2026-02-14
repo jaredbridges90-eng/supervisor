@@ -522,6 +522,7 @@ class RestAPI(CoreSysAttributes):
                 web.get("/core/api/stream", api_proxy.stream),
                 web.post("/core/api/{path:.+}", api_proxy.api),
                 web.get("/core/api/{path:.+}", api_proxy.api),
+                web.delete("/core/api/{path:.+}", api_proxy.api),
                 web.get("/core/api/", api_proxy.api),
             ]
         )
@@ -782,6 +783,10 @@ class RestAPI(CoreSysAttributes):
                 web.delete(
                     "/store/repositories/{repository}", api_store.remove_repository
                 ),
+                web.post(
+                    "/store/repositories/{repository}/repair",
+                    api_store.repositories_repository_repair,
+                ),
             ]
         )
 
@@ -813,6 +818,10 @@ class RestAPI(CoreSysAttributes):
         self.webapp.add_routes(
             [
                 web.get("/docker/info", api_docker.info),
+                web.post(
+                    "/docker/migrate-storage-driver",
+                    api_docker.migrate_docker_storage_driver,
+                ),
                 web.post("/docker/options", api_docker.options),
                 web.get("/docker/registries", api_docker.registries),
                 web.post("/docker/registries", api_docker.create_registry),

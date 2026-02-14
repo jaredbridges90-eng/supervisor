@@ -1,5 +1,6 @@
 """A collection of tasks."""
 
+from contextlib import suppress
 from datetime import datetime, timedelta
 import logging
 from typing import cast
@@ -12,7 +13,9 @@ from ..exceptions import (
     AddonsError,
     BackupFileNotFoundError,
     HomeAssistantError,
+    HomeAssistantWSError,
     ObserverError,
+    SupervisorUpdateError,
 )
 from ..homeassistant.const import LANDINGPAGE, WSType
 from ..jobs.const import JobConcurrency
@@ -150,7 +153,13 @@ class Tasks(CoreSysAttributes):
                 "Sending update add-on WebSocket command to Home Assistant Core: %s",
                 message,
             )
-            await self.sys_homeassistant.websocket.async_send_command(message)
+            try:
+                await self.sys_homeassistant.websocket.async_send_command(message)
+            except HomeAssistantWSError as err:
+                _LOGGER.warning(
+                    "Could not send add-on update command to Home Assistant Core: %s",
+                    err,
+                )
 
     @Job(
         name="tasks_update_supervisor",
@@ -174,7 +183,11 @@ class Tasks(CoreSysAttributes):
             "Found new Supervisor version %s, updating",
             self.sys_supervisor.latest_version,
         )
-        await self.sys_supervisor.update()
+
+        # Errors are logged by the exceptions, we can't really do something
+        # if an update fails here.
+        with suppress(SupervisorUpdateError):
+            await self.sys_supervisor.update()
 
     async def _watchdog_homeassistant_api(self):
         """Create scheduler task for monitoring running state of API.

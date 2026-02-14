@@ -29,7 +29,7 @@ from .const import (
 if TYPE_CHECKING:
     from .addons.manager import AddonManager
     from .api import RestAPI
-    from .arch import CpuArch
+    from .arch import CpuArchManager
     from .auth import Auth
     from .backups.manager import BackupManager
     from .bus import Bus
@@ -78,7 +78,7 @@ class CoreSys:
         # Internal objects pointers
         self._docker: DockerAPI | None = None
         self._core: Core | None = None
-        self._arch: CpuArch | None = None
+        self._arch: CpuArchManager | None = None
         self._auth: Auth | None = None
         self._homeassistant: HomeAssistant | None = None
         self._supervisor: Supervisor | None = None
@@ -266,17 +266,17 @@ class CoreSys:
         self._plugins = value
 
     @property
-    def arch(self) -> CpuArch:
-        """Return CpuArch object."""
+    def arch(self) -> CpuArchManager:
+        """Return CpuArchManager object."""
         if self._arch is None:
-            raise RuntimeError("CpuArch not set!")
+            raise RuntimeError("CpuArchManager not set!")
         return self._arch
 
     @arch.setter
-    def arch(self, value: CpuArch) -> None:
-        """Set a CpuArch object."""
+    def arch(self, value: CpuArchManager) -> None:
+        """Set a CpuArchManager object."""
         if self._arch:
-            raise RuntimeError("CpuArch already set!")
+            raise RuntimeError("CpuArchManager already set!")
         self._arch = value
 
     @property
@@ -628,9 +628,17 @@ class CoreSys:
             context = callback(context)
         return context
 
-    def create_task(self, coroutine: Coroutine) -> asyncio.Task:
+    def create_task(
+        self, coroutine: Coroutine, *, eager_start: bool | None = None
+    ) -> asyncio.Task:
         """Create an async task."""
-        return self.loop.create_task(coroutine, context=self._create_context())
+        # eager_start kwarg works but wasn't added for mypy visibility until 3.14
+        # can remove the type ignore then
+        return self.loop.create_task(
+            coroutine,
+            context=self._create_context(),
+            eager_start=eager_start,  # type: ignore
+        )
 
     def call_later(
         self,
@@ -733,8 +741,8 @@ class CoreSysAttributes:
         return self.coresys.plugins
 
     @property
-    def sys_arch(self) -> CpuArch:
-        """Return CpuArch object."""
+    def sys_arch(self) -> CpuArchManager:
+        """Return CpuArchManager object."""
         return self.coresys.arch
 
     @property
@@ -847,9 +855,11 @@ class CoreSysAttributes:
         """Add a job to the executor pool."""
         return self.coresys.run_in_executor(funct, *args, **kwargs)
 
-    def sys_create_task(self, coroutine: Coroutine) -> asyncio.Task:
+    def sys_create_task(
+        self, coroutine: Coroutine, *, eager_start: bool | None = None
+    ) -> asyncio.Task:
         """Create an async task."""
-        return self.coresys.create_task(coroutine)
+        return self.coresys.create_task(coroutine, eager_start=eager_start)
 
     def sys_call_later(
         self,

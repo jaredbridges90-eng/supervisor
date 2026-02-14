@@ -179,6 +179,7 @@ ATTR_DOCKER = "docker"
 ATTR_DOCKER_API = "docker_api"
 ATTR_DOCUMENTATION = "documentation"
 ATTR_DOMAINS = "domains"
+ATTR_DUPLICATE_LOG_FILE = "duplicate_log_file"
 ATTR_ENABLE = "enable"
 ATTR_ENABLE_IPV6 = "enable_ipv6"
 ATTR_ENABLED = "enabled"
@@ -304,6 +305,7 @@ ATTR_REGISTRIES = "registries"
 ATTR_REGISTRY = "registry"
 ATTR_REPOSITORIES = "repositories"
 ATTR_REPOSITORY = "repository"
+ATTR_ROUTE_METRIC = "route_metric"
 ATTR_SCHEMA = "schema"
 ATTR_SECURITY = "security"
 ATTR_SERIAL = "serial"
@@ -328,6 +330,7 @@ ATTR_STATE = "state"
 ATTR_STATIC = "static"
 ATTR_STDIN = "stdin"
 ATTR_STORAGE = "storage"
+ATTR_STORAGE_DRIVER = "storage_driver"
 ATTR_SUGGESTIONS = "suggestions"
 ATTR_SUPERVISOR = "supervisor"
 ATTR_SUPERVISOR_INTERNET = "supervisor_internet"
@@ -408,6 +411,11 @@ ROLE_MANAGER = "manager"
 ROLE_ADMIN = "admin"
 
 ROLE_ALL = [ROLE_DEFAULT, ROLE_HOMEASSISTANT, ROLE_BACKUP, ROLE_MANAGER, ROLE_ADMIN]
+
+OBSERVER_PORT = 4357
+
+# Used for stream operations
+DEFAULT_CHUNK_SIZE = 2**16  # 64KiB
 
 
 class AddonBootConfig(StrEnum):
